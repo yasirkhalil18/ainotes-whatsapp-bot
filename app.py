@@ -2,8 +2,14 @@ from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 import requests
 from bs4 import BeautifulSoup
+from os import environ
 
 app = Flask(__name__)
+
+# Twilio credentials from environment variables
+TWILIO_ACCOUNT_SID = environ.get('TWILIO_ACCOUNT_SID')
+TWILIO_AUTH_TOKEN = environ.get('TWILIO_AUTH_TOKEN')
+TWILIO_PHONE_NUMBER = environ.get('TWILIO_PHONE_NUMBER')
 
 # Subject mapping for short forms
 subject_map = {
