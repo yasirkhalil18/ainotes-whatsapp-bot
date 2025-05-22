@@ -1,6 +1,5 @@
-# app.py
-
 from flask import Flask, request
+from twilio.twiml.messaging_response import MessagingResponse
 
 app = Flask(__name__)
 
@@ -10,11 +9,21 @@ def home():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json()
-    print("📨 Incoming Data:", data)
-
-    # Aap yahan apna WhatsApp bot ka logic laga saktay ho
-    return {"status": "received"}, 200
+    incoming_msg = request.values.get('Body', '').lower()
+    from_number = request.values.get('From', '')
+    
+    print(f"📨 Message from {from_number}: {incoming_msg}")
+    
+    resp = MessagingResponse()
+    msg = resp.message()
+    
+    # Simple auto-reply logic
+    if 'hello' in incoming_msg:
+        msg.body("Hi there! 👋 This is AiNotes WhatsApp Bot.")
+    else:
+        msg.body("Sorry, I didn't understand that. Type 'hello' to begin.")
+    
+    return str(resp)
 
 if __name__ == "__main__":
     app.run(debug=True)
