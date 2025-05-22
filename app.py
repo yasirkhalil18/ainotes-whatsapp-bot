@@ -1,7 +1,5 @@
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
-import requests
-from bs4 import BeautifulSoup
 from os import environ
 
 app = Flask(__name__)
@@ -21,32 +19,19 @@ subject_map = {
     "mathematics": "math"
 }
 
-# Scrape links from AiNotes.pk
+# Static links dictionary (JSON method)
+notes_links = {
+    "class-9-chemistry-federal-board-fbise-notes": "https://ainotes.pk/class-9-notes-pdf-chemistry-federal-board-fbise/",
+    "class-10-biology-federal-board-fbise-textbook": "https://ainotes.pk/10th-class-biology-textbook-federal-board-fbise/",
+    "class-10-physics-federal-board-fbise-notes": "https://ainotes.pk/10th-class-physics-federal-board-fbise/",
+    "class-9-chemistry-punjab-board-textbook": "https://ainotes.pk/9th-class-chemistry-punjab-board/"
+}
+
+# Fetch resource link from static dictionary
 def get_resource_link(class_number, subject, board, resource_type="notes"):
     mapped_subject = subject_map.get(subject, subject)
-    base_urls = []
-    if resource_type == "textbook":
-        base_urls = [f"https://ainotes.pk/fbise-new-textbooks-for-class-{class_number}-2024-2025/"]
-    else:
-        base_urls = [f"https://ainotes.pk/{'fbise' if 'fbise' in board else 'punjab-board'}-notes-class-9-to-12/"]
-    
-    for base_url in base_urls:
-        try:
-            res = requests.get(base_url)
-            print(f"Scrape Status for {base_url}: {res.status_code}")
-            if res.status_code != 200:
-                continue
-            soup = BeautifulSoup(res.text, 'html.parser')
-            links = soup.find_all('a')
-            for link in links:
-                href = link.get('href', '').lower()
-                if (mapped_subject in href and class_number in href and 
-                    (board in href or 'fbise' in href or 'punjab' in href) and 
-                    resource_type in href):
-                    return href
-        except Exception as e:
-            print(f"Scraping Error for {base_url}: {e}")
-    return None
+    key = f"class-{class_number}-{mapped_subject}-{board}-{resource_type}"
+    return notes_links.get(key)
 
 # Main bot logic
 def process_message(incoming_msg):
@@ -62,7 +47,7 @@ def process_message(incoming_msg):
             return f"Yeh raha {resource_type} link 📚: {real_link}" if real_link else f"{resource_type.capitalize()} nahi mila 😔. Class: {class_number}, Subject: {subject}, Board: {board}"
         return "Subject nahi mila 😔. Example: Class 9 Bio Textbook Federal"
     else:
-        if "kya haal" in incoming_msg or "hello" in incoming_msg:
+        if "kya haal" in incoming_msg or "hello" in incoming_msg or "hy" in incoming_msg:
             return "Sab theek, bhai! 😎 Kis class ke notes ya textbook chahiye?"
         return "Welcome to AiNotes.pk Bot! 📚 Kis class, subject, ya board ke notes/textbook chahiye? Example: Class 9 Bio Textbook Federal"
 
