@@ -10,7 +10,7 @@ app = Flask(__name__)
 with open("search-data.json", "r", encoding="utf-8") as f:
     data = json.load(f)
 
-# Define keyword groups for matching
+# Expanded keyword groups for matching
 keywords = {
     "books": [
         "book", "books", "kitab", "pdf", "textbook", "ebooks", "download book", "book of", "full book", "pura kitab", "chapter book"
@@ -44,8 +44,9 @@ def webhook():
 
     for entry in data:
         title = entry.get("title", "").lower()
-        score = 0
+        url = entry.get("url", "")
 
+        score = 0
         for group in keywords.values():
             for word in group:
                 if word in incoming_msg:
@@ -53,15 +54,21 @@ def webhook():
                 if word in title:
                     score += 1
 
-        if score >= 2:
+        # Filter out image/media URLs like .webp, .jpg, etc.
+        if score >= 2 and not url.endswith(('.webp', '.jpg', '.jpeg', '.png', '.gif')) and "/uploads/" not in url:
             results.append((score, entry))
 
-    # Sort matched results by score (highest first)
-    results.sort(reverse=True, key=lambda x: x[0])
-    top_matches = results[:3]  # Max 3 results
+        if len(results) >= 3:
+            break
 
-    if top_matches:
-        matched_links = [f"👉 {entry['title']}\n🔗 {entry['url']}" for _, entry in top_matches]
+    if results:
+        # Sort results by score descending (optional)
+        results.sort(key=lambda x: x[0], reverse=True)
+
+        matched_links = []
+        for _, entry in results[:3]:
+            matched_links.append(f"👉 {entry['title']}\n🔗 {entry['url']}")
+
         msg.body(f"🔍 Results for: *{incoming_msg}*\n\n" + "\n\n".join(matched_links))
     else:
         msg.body("❌ Sorry! I couldn't find anything. Try again using clear words like 'class 10 physics notes fbise'. Or visit: https://ainotes.pk")
