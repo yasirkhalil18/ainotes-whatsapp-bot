@@ -1,79 +1,70 @@
-# app.py
-
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
-import json
 
 app = Flask(__name__)
 
-# Load search data from JSON file
-with open("search-data.json", "r", encoding="utf-8") as f:
-    data = json.load(f)
-
-# Expanded keyword groups for matching
-keywords = {
-    "books": [
-        "book", "books", "kitab", "pdf", "textbook", "ebooks", "download book", "book of", "full book", "pura kitab", "chapter book"
-    ],
-    "notes": [
-        "note", "notes", "helping", "handout", "short questions", "long questions", "chapter wise", "mcqs", "key points", "important questions", "full notes"
-    ],
-    "class": [
-        "class", "grade", "matric", "inter", "ninth", "tenth", "eleventh", "twelfth", "9", "10", "11", "12", "class 9", "class 10", "class 11", "class 12"
-    ],
-    "subject": [
-        "biology", "physics", "chemistry", "math", "mathematics", "computer", "computer science", "urdu", "english", "islamiat", "islamiyat", "pakistan studies",
-        "pak studies", "science", "general science", "islamic studies", "education", "economics", "sindhi", "history", "geography", "civics", "pma", "css"
-    ],
-    "board": [
-        "fbise", "punjab", "kpk", "balochistan", "ajk", "sindh", "federal board", "punjab board", "kpk board", "balochistan board", "ajk board", "sindh board"
-    ]
+# ----------------------
+# Keyword to Link Mapping
+# ----------------------
+KEYWORD_MAP = {
+    "fbise notes": "https://ainotes.pk/fbise-notes/",
+    "class 9 notes": "https://ainotes.pk/fbise-notes/class-9/",
+    "class 10 notes": "https://ainotes.pk/fbise-notes/class-10/",
+    "class 11 notes": "https://ainotes.pk/fbise-notes/class-11/",
+    "class 12 notes": "https://ainotes.pk/fbise-notes/class-12/",
+    "fsc part 1 notes": "https://ainotes.pk/fbise-notes/class-11/",
+    "fsc part 2 notes": "https://ainotes.pk/fbise-notes/class-12/",
+    "mdcat notes": "https://ainotes.pk/mdcat-notes/",
+    "css notes": "https://ainotes.pk/css-notes/",
+    "pms notes": "https://ainotes.pk/pms-notes/",
+    "army test notes": "https://ainotes.pk/army-test-notes/",
+    "pak army": "https://ainotes.pk/army-test-notes/",
+    "ai lab reports": "https://ainotes.pk/bs-ai-books-notes-and-lab-reports/",
+    "bs ai": "https://ainotes.pk/bs-ai-books-notes-and-lab-reports/",
+    "bs ai lab": "https://ainotes.pk/bs-ai-books-notes-and-lab-reports/",
+    "java lab report": "https://ainotes.pk/bs-ai-books-notes-and-lab-reports/lab-report-oel-airplane-reservation-system-in-java/",
+    "guess the word": "https://ainotes.pk/guess-the-word/",
+    "mcqs": "https://ainotes.pk/mcqs/",
+    "past papers": "https://ainotes.pk/past-papers/",
+    "9th mcqs": "https://ainotes.pk/mcqs/class-9/",
+    "10th mcqs": "https://ainotes.pk/mcqs/class-10/",
+    "11th mcqs": "https://ainotes.pk/mcqs/class-11/",
+    "12th mcqs": "https://ainotes.pk/mcqs/class-12/",
+    "online earning": "https://ainotes.pk/earnings-skills-for-students/online-earning-in-pakistan-without-investment-2025-guide-for-students/",
+    "motorway police jobs": "https://ainotes.pk/government-jobs/nhmp-jobs-2025-apply-online-for-2100-motorway-police-vacancies-salary-guide/",
+    "notes": "https://ainotes.pk/"
 }
 
-@app.route("/", methods=["GET"])
-def home():
-    return "✅ WhatsApp Bot is Running with Full Smart Matching!"
-
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    incoming_msg = request.values.get('Body', '').lower().strip()
+# ----------------------
+# Flask Route for Twilio
+# ----------------------
+@app.route("/sms", methods=["POST"])
+def sms_reply():
+    user_input = request.form.get("Body", "").lower().strip()
     resp = MessagingResponse()
-    msg = resp.message()
+    matched = False
 
-    results = []
-
-    for entry in data:
-        title = entry.get("title", "").lower()
-        url = entry.get("url", "")
-
-        score = 0
-        for group in keywords.values():
-            for word in group:
-                if word in incoming_msg:
-                    score += 1
-                if word in title:
-                    score += 1
-
-        # Filter out image/media URLs like .webp, .jpg, etc.
-        if score >= 2 and not url.endswith(('.webp', '.jpg', '.jpeg', '.png', '.gif')) and "/uploads/" not in url:
-            results.append((score, entry))
-
-        if len(results) >= 3:
+    for keyword, link in KEYWORD_MAP.items():
+        if keyword in user_input:
+            reply = f"🔍 Result for: {keyword.title()}\n🔗 {link}"
+            resp.message(reply)
+            matched = True
             break
 
-    if results:
-        # Sort results by score descending (optional)
-        results.sort(key=lambda x: x[0], reverse=True)
-
-        matched_links = []
-        for _, entry in results[:3]:
-            matched_links.append(f"👉 {entry['title']}\n🔗 {entry['url']}")
-
-        msg.body(f"🔍 Results for: *{incoming_msg}*\n\n" + "\n\n".join(matched_links))
-    else:
-        msg.body("❌ Sorry! I couldn't find anything. Try again using clear words like 'class 10 physics notes fbise'. Or visit: https://ainotes.pk")
+    if not matched:
+        default_reply = (
+            "❌ No exact match found.\n"
+            "Try one of these keywords:\n"
+            "- fbise notes\n- mdcat notes\n- css notes\n"
+            "- class 9 notes\n- ai lab reports\n- army test notes\n"
+            "- guess the word\n- past papers\n- online earning"
+        )
+        resp.message(default_reply)
 
     return str(resp)
 
+# ----------------------
+# Run Flask App
+# ----------------------
 if __name__ == "__main__":
     app.run(debug=True)
