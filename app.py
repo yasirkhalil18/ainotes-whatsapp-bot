@@ -2,59 +2,58 @@
 
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
-from googlesearch import search  # pip install googlesearch-python
+from googlesearch import search
 
 app = Flask(__name__)
 
-# ✅ Keyword Normalizer Function
-def normalize_keywords(text):
-    replacements = {
-        # Classes
-        "class 9": "class 9", "9th class": "class 9", "ninth class": "class 9",
-        "class 10": "class 10", "10th class": "class 10", "tenth class": "class 10",
-        "class 11": "class 11", "first year": "class 11", "1st year": "class 11",
-        "class 12": "class 12", "second year": "class 12", "2nd year": "class 12",
-
-        # Subjects
-        "urdu": "urdu", "eng": "english", "english": "english", "islamiat": "islamiyat", 
-        "isl": "islamiyat", "islamiyaat": "islamiyat", "math": "mathematics", 
-        "chem": "chemistry", "phy": "physics", "bio": "biology", "computer": "computer science",
-
-        # Boards
-        "fbise": "fbise", "federal": "fbise", "punjab": "punjab board", "kpk": "kpk board",
-
-        # Resources
-        "notes": "notes", "notez": "notes", "notz": "notes",
-        "past paper": "past papers", "model paper": "model papers",
-        "guess paper": "guess papers", "textbook": "textbook", "book": "textbook",
-        "important question": "important questions", "sawal": "questions",
-        "mcqs": "mcqs", "short": "short questions", "long": "long questions",
-        "kitab": "textbook", "papr": "papers"
-    }
-
-    for key, value in replacements.items():
-        text = text.replace(key, value)
-    return text
-
-# ✅ Home Route (Health Check)
 @app.route("/", methods=["GET"])
 def home():
     return "✅ WhatsApp Bot is Running!"
 
-# ✅ Twilio Webhook
 @app.route("/webhook", methods=["POST"])
 def webhook():
     incoming_msg = request.values.get('Body', '').lower()
     from_number = request.values.get('From', '')
 
+    print(f"📨 From {from_number} —> Message: {incoming_msg}")
+
     resp = MessagingResponse()
     msg = resp.message()
 
-    # Normalize user query
-    clean_query = normalize_keywords(incoming_msg)
+    # Expanded keyword mapping
+    replacements = {
+        # Subjects (shortcuts)
+        "phy": "physics", "bio": "biology", "chem": "chemistry", "math": "mathematics",
+        "isl": "islamiat", "comp": "computer", "eng": "english", "urdu": "urdu",
+        "pak": "pak study", "g sci": "general science", "sci": "science",
 
-    # Build Google search query
-    query = f"{clean_query} site:ainotes.pk"
+        # Class identifiers
+        "1st year": "class 11", "2nd year": "class 12", "ix": "class 9", "x": "class 10",
+        "matric": "class 10", "inter": "class 11 class 12",
+
+        # Boards
+        "federal": "fbise", "fedral": "fbise", "punjab": "punjab board", "sind": "sindh board",
+        "kpk": "kpk board", "bal": "balochistan board", "ajk": "ajk board",
+
+        # Content types
+        "keybook": "key book", "text book": "textbook", "past": "past papers",
+        "model": "model papers", "guess": "guess papers", "solved": "solved papers",
+
+        # Competitive
+        "army": "army test", "pma": "pma long course", "issb": "issb preparation",
+        "css": "css exam", "pms": "pms exam",
+        
+        # Common typos or chat language
+        "fbse": "fbise", "fed": "fbise", "phyx": "physics", "biolgy": "biology",
+        "key bk": "key book", "kitaab": "textbook", "kitab": "textbook",
+    }
+
+    # Apply replacements
+    for key, value in replacements.items():
+        if key in incoming_msg:
+            incoming_msg = incoming_msg.replace(key, value)
+
+    query = f"{incoming_msg} site:ainotes.pk"
     print(f"🔍 Searching Google for: {query}")
 
     try:
@@ -63,13 +62,12 @@ def webhook():
             link = results[0]
             msg.body(f"🔗 Here's what I found for:\n*{incoming_msg}*\n👉 {link}")
         else:
-            msg.body("❌ Sorry! I couldn't find your request. Visit https://ainotes.pk or try again with more details.")
+            msg.body("❌ Sorry! No result found.\nVisit: https://ainotes.pk")
     except Exception as e:
-        msg.body("⚠️ Something went wrong. Please try again later.")
-        print("Error:", e)
+        print("❌ Error:", str(e))
+        msg.body("⚠️ Error fetching result. Please try again later.")
 
     return str(resp)
 
-# ✅ Run App
 if __name__ == "__main__":
     app.run(debug=True)
