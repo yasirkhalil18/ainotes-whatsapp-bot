@@ -1,73 +1,114 @@
+# app.py
+
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 
 app = Flask(__name__)
 
-# Helper: generate URL based on keywords
-def generate_note_url(message):
-    message = message.lower()
-    
-    boards = ['fbise', 'punjab', 'kpk', 'sindh', 'balochistan', 'ajk']
-    classes = ['9', '10', '11', '12']
-    content_types = ['notes', 'keybook', 'textbook', 'past paper', 'pma', 'issb', 'css', 'mdcat', 'army']
-    
-    subject_keywords = {
-        'physics': 'physics',
-        'chemistry': 'chemistry',
-        'biology': 'biology',
+# Synonym normalization function
+def normalize_input(user_input):
+    user_input = user_input.lower()
+    synonyms = {
+        'bio': 'biology',
+        'phy': 'physics',
+        'chem': 'chemistry',
+        'maths': 'mathematics',
         'math': 'mathematics',
-        'english': 'english',
-        'urdu': 'urdu',
-        'islamiat': 'islamiat',
-        'pak studies': 'pak-studies',
-        'computer': 'computer',
-        'general science': 'general-science'
+        'eng': 'english',
+        'urduu': 'urdu',
+        'islamiyat': 'islamiat',
+        'islamic studies': 'islamiat',
+        'pak studies': 'pakistan studies',
+        'pakstudy': 'pakistan studies',
+        'comp': 'computer science',
+        'cs': 'computer science',
+        'eco': 'economics',
+        'econs': 'economics',
+        'gen science': 'general science',
+        'g science': 'general science',
+        'fbise': 'federal board',
+        'punjab board': 'punjab board',
+        'kpk': 'kpk board',
+        'kp': 'kpk board',
+        'sindh': 'sindh board',
+        'sd': 'sindh board',
+        'balochistan': 'balochistan board',
+        'bl': 'balochistan board',
+        'ajk': 'ajk board',
+        '9th': 'class 9',
+        'ninth': 'class 9',
+        '10th': 'class 10',
+        'tenth': 'class 10',
+        '11th': 'class 11',
+        'eleventh': 'class 11',
+        '1st year': 'class 11',
+        'first year': 'class 11',
+        '12th': 'class 12',
+        'twelfth': 'class 12',
+        '2nd year': 'class 12',
+        'second year': 'class 12',
+        'note': 'notes',
+        'handouts': 'notes',
+        'key book': 'keybooks',
+        'key-book': 'keybooks',
+        'text book': 'textbooks',
+        'past paper': 'past papers',
+        'previous papers': 'past papers',
+        'old papers': 'past papers',
     }
+    for key, value in synonyms.items():
+        user_input = user_input.replace(key, value)
+    return user_input
 
-    board = next((b for b in boards if b in message), None)
-    class_level = next((c for c in classes if c in message), None)
-    subject = next((s for s in subject_keywords if s in message), None)
-    content = next((ct for ct in content_types if ct in message), None)
-
-    if 'pma' in message or 'issb' in message:
-        return "https://ainotes.pk/army-tests/pma-issb-notes/"
-
-    if 'css' in message:
-        return "https://ainotes.pk/css/"
-
-    if 'mdcat' in message:
-        return "https://ainotes.pk/mdcat/"
-
-    if 'army' in message:
-        return "https://ainotes.pk/army-tests/"
-
-    if board and class_level and subject:
-        return f"https://ainotes.pk/{board}/{class_level}th-class/{subject_keywords[subject]}-{content if content else 'notes'}/"
-
+# URL generator
+def generate_url(user_input):
+    base_url = "https://ainotes.pk"
+    
+    boards = ["federal board", "punjab board", "kpk board", "sindh board", "balochistan board", "ajk board"]
+    classes = ["class 9", "class 10", "class 11", "class 12"]
+    subjects = [
+        "physics", "chemistry", "biology", "mathematics", "english", "urdu",
+        "islamiat", "pakistan studies", "computer science", "economics", "general science"
+    ]
+    types = ["notes", "keybooks", "textbooks", "past papers"]
+    
+    board = next((b for b in boards if b in user_input), "federal board")
+    class_level = next((c for c in classes if c in user_input), None)
+    subject = next((s for s in subjects if s in user_input), None)
+    content_type = next((t for t in types if t in user_input), None)
+    
+    if class_level and subject and content_type:
+        board_slug = board.replace(" ", "-")
+        class_slug = class_level.replace("class ", "") + "th-class"
+        subject_slug = subject.replace(" ", "-")
+        content_slug = content_type.replace(" ", "-")
+        return f"{base_url}/{board_slug}/{class_slug}/{subject_slug}-{content_slug}/"
     return None
 
-# Routes
+# Health check route
 @app.route("/", methods=["GET"])
 def home():
-    return "✅ WhatsApp Bot is Running on Render!"
+    return "✅ WhatsApp Bot is Running Successfully!"
 
+# Twilio webhook route
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    incoming_msg = request.values.get('Body', '').lower()
+    incoming_msg = request.values.get('Body', '')
     from_number = request.values.get('From', '')
     
     print(f"📩 Message from {from_number}: {incoming_msg}")
     
+    normalized_msg = normalize_input(incoming_msg)
+    response_url = generate_url(normalized_msg)
+
     resp = MessagingResponse()
     msg = resp.message()
-
-    url = generate_note_url(incoming_msg)
-
-    if url:
-        msg.body(f"✅ Here is the link: {url}")
+    
+    if response_url:
+        msg.body(f"📚 Here is the link to your request:\n{response_url}")
     else:
         msg.body("❌ Sorry! I couldn't find your request. Visit https://ainotes.pk or type e.g. 'Class 9 FBISE Physics Notes'.")
-
+    
     return str(resp)
 
 if __name__ == "__main__":
