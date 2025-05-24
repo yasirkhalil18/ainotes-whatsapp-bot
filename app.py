@@ -6,11 +6,11 @@ import json
 
 app = Flask(__name__)
 
-# Load search data
+# Load search data from JSON file
 with open("search-data.json", "r", encoding="utf-8") as f:
     data = json.load(f)
 
-# Expanded keyword groups
+# Define keyword groups for matching
 keywords = {
     "books": [
         "book", "books", "kitab", "pdf", "textbook", "ebooks", "download book", "book of", "full book", "pura kitab", "chapter book"
@@ -40,25 +40,28 @@ def webhook():
     resp = MessagingResponse()
     msg = resp.message()
 
-    matched_links = []
+    results = []
 
     for entry in data:
         title = entry.get("title", "").lower()
-
-        # Matching by score
         score = 0
+
         for group in keywords.values():
             for word in group:
-                if word in incoming_msg and word in title:
+                if word in incoming_msg:
+                    score += 1
+                if word in title:
                     score += 1
 
         if score >= 2:
-            matched_links.append(f"👉 {entry['title']}\n🔗 {entry['link']}")
+            results.append((score, entry))
 
-        if len(matched_links) >= 3:
-            break
+    # Sort matched results by score (highest first)
+    results.sort(reverse=True, key=lambda x: x[0])
+    top_matches = results[:3]  # Max 3 results
 
-    if matched_links:
+    if top_matches:
+        matched_links = [f"👉 {entry['title']}\n🔗 {entry['url']}" for _, entry in top_matches]
         msg.body(f"🔍 Results for: *{incoming_msg}*\n\n" + "\n\n".join(matched_links))
     else:
         msg.body("❌ Sorry! I couldn't find anything. Try again using clear words like 'class 10 physics notes fbise'. Or visit: https://ainotes.pk")
