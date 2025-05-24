@@ -1,16 +1,56 @@
-# app.py
-
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 
 app = Flask(__name__)
 
-# Health check route
+# Helper: generate URL based on keywords
+def generate_note_url(message):
+    message = message.lower()
+    
+    boards = ['fbise', 'punjab', 'kpk', 'sindh', 'balochistan', 'ajk']
+    classes = ['9', '10', '11', '12']
+    content_types = ['notes', 'keybook', 'textbook', 'past paper', 'pma', 'issb', 'css', 'mdcat', 'army']
+    
+    subject_keywords = {
+        'physics': 'physics',
+        'chemistry': 'chemistry',
+        'biology': 'biology',
+        'math': 'mathematics',
+        'english': 'english',
+        'urdu': 'urdu',
+        'islamiat': 'islamiat',
+        'pak studies': 'pak-studies',
+        'computer': 'computer',
+        'general science': 'general-science'
+    }
+
+    board = next((b for b in boards if b in message), None)
+    class_level = next((c for c in classes if c in message), None)
+    subject = next((s for s in subject_keywords if s in message), None)
+    content = next((ct for ct in content_types if ct in message), None)
+
+    if 'pma' in message or 'issb' in message:
+        return "https://ainotes.pk/army-tests/pma-issb-notes/"
+
+    if 'css' in message:
+        return "https://ainotes.pk/css/"
+
+    if 'mdcat' in message:
+        return "https://ainotes.pk/mdcat/"
+
+    if 'army' in message:
+        return "https://ainotes.pk/army-tests/"
+
+    if board and class_level and subject:
+        return f"https://ainotes.pk/{board}/{class_level}th-class/{subject_keywords[subject]}-{content if content else 'notes'}/"
+
+    return None
+
+# Routes
 @app.route("/", methods=["GET"])
 def home():
     return "✅ WhatsApp Bot is Running on Render!"
 
-# Webhook route for Twilio
 @app.route("/webhook", methods=["POST"])
 def webhook():
     incoming_msg = request.values.get('Body', '').lower()
@@ -20,15 +60,14 @@ def webhook():
     
     resp = MessagingResponse()
     msg = resp.message()
-    
-    # Bot Response Logic
-    if 'hello' in incoming_msg:
-        msg.body("Hi there! 👋 This is AiNotes WhatsApp Bot.")
-    elif 'notes' in incoming_msg:
-        msg.body("📚 Visit https://AiNote.pk to get all educational notes!")
+
+    url = generate_note_url(incoming_msg)
+
+    if url:
+        msg.body(f"✅ Here is the link: {url}")
     else:
-        msg.body("❓ Sorry, I didn't understand that. Type 'hello' to begin.")
-    
+        msg.body("❌ Sorry! I couldn't find your request. Visit https://ainotes.pk or type e.g. 'Class 9 FBISE Physics Notes'.")
+
     return str(resp)
 
 if __name__ == "__main__":
