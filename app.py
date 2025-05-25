@@ -1,47 +1,94 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 from googlesearch import search
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
+import requests
 
-# Load environment variables from .env
 load_dotenv()
 
-# Initialize Flask app
 app = Flask(__name__)
 
-# Define a basic health check route
+HF_API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
+HF_HEADERS = {
+    "Authorization": f"Bearer {os.getenv('HF_API_TOKEN')}"
+}
+
+# ✅ Updated candidate labels
+def classify_intent(text):
+    payload = {
+        "inputs": text,
+        "parameters": {
+            "candidate_labels": [
+                "textbook", "textbooks", "notes", "class notes", "chapter wise notes", "solved notes",
+                "past papers", "guess papers", "helping notes", "MCQs", "short questions", "long questions",
+                "solved exercises", "lab manual", "practical notebook", "biology practical", "chemistry practical",
+                "physics practical", "army test notes", "pma notes", "issb notes", "css notes", "pms notes",
+                "entry test notes", "mdcat notes", "ecat notes", "nums notes",
+                "9th class notes", "10th class notes", "1st year notes", "2nd year notes", "matric notes",
+                "intermediate notes", "FBISE notes", "Punjab board notes", "Sindh board notes",
+                "KPK board notes", "Balochistan board notes", "AJK board notes",
+                "python roadmap", "java notes", "sql notes", "coding roadmap",
+                "ai roadmap", "web development notes"
+            ]
+        }
+    }
+    try:
+        response = requests.post(HF_API_URL, headers=HF_HEADERS, json=payload)
+        result = response.json()
+        label = result['labels'][0]
+        return label
+    except Exception as e:
+        print("NLP Error:", e)
+        return "unknown"
+
 @app.route("/", methods=["GET"])
 def home():
-    return "AiNotes WhatsApp Bot is running ✅", 200
+    return "WhatsApp Bot is Running!"
 
-# Define webhook to handle incoming messages
-@app.route("/whatsapp", methods=["POST"])
-def whatsapp_reply():
-    incoming_msg = request.values.get('Body', '').strip()
-    response = MessagingResponse()
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    incoming_msg = request.values.get('Body', '').lower()
+    resp = MessagingResponse()
+    msg = resp.message()
 
-    if not incoming_msg:
-        response.message("❌ I didn't receive any text. Please send a valid message.")
-        return str(response)
+    intent = classify_intent(incoming_msg)
+    print(f"Detected intent: {intent}")
+
+    if intent == "notes":
+        query = f"{incoming_msg} site:ainotes.pk"
+    elif intent == "army test notes":
+        # Army specific notes search keywords
+        army_keywords = ["basai notes", "kpma notes", "pms notes", "army test notes", "pak army notes"]
+        matched = [k for k in army_keywords if k in incoming_msg]
+        if matched:
+            query = f"{matched[0]} site:ainotes.pk"
+        else:
+            query = f"army notes site:ainotes.pk"
+    elif intent == "greeting":
+        msg.body("👋 Hello! I can help you find class notes, Army test notes, and more from ainotes.pk. Try typing '10th Chemistry notes' or 'Basai notes'.")
+        return str(resp)
+    elif intent == "bye":
+        msg.body("👋 Goodbye! See you again soon.")
+        return str(resp)
+    elif intent == "help":
+        msg.body("ℹ️ Send me a subject or exam name like '9th Physics notes', 'Basai notes', or 'PMS notes', and I'll find them from ainotes.pk.")
+        return str(resp)
+    else:
+        msg.body("🤖 Sorry, I didn’t understand that. Try sending something like 'Class 9 Biology' or 'Army test notes'.")
+        return str(resp)
 
     try:
-        query = incoming_msg
-        results = list(search(query, num_results=3))
+        results = list(search(query, num_results=1))
         if results:
-            reply = "🔎 Top search results for:\n" + query + "\n\n"
-            for i, link in enumerate(results, 1):
-                reply += f"{i}. {link}\n"
+            msg.body(f"📘 Here's what I found for:\n*{incoming_msg}*\n🔗 {results[0]}")
         else:
-            reply = "⚠️ Sorry, I couldn't find any results."
-
+            msg.body("❌ Sorry! Couldn't find related notes. Please try again or visit https://ainotes.pk directly.")
     except Exception as e:
-        reply = f"❌ Error: {str(e)}"
+        print("Google Search Error:", e)
+        msg.body("⚠️ Something went wrong with the search. Please try again later.")
 
-    response.message(reply)
-    return str(response)
+    return str(resp)
 
-# Run the app (if you want to run locally)
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(debug=True)
