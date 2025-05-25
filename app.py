@@ -1,15 +1,39 @@
 # app.py
 
+import os
+from dotenv import load_dotenv
+import requests
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 from googlesearch import search
-import requests
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 
-# Wit.ai API settings
-WIT_AI_TOKEN = "4JQVXVMJ5M5EEEHGI3XJNCMUKTXCXE4H"
-WIT_AI_URL = "https://api.wit.ai/message?v=20250525&q="
+# Hugging Face API Config
+HF_API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
+HF_HEADERS = {
+    "Authorization": f"Bearer {os.getenv('HF_API_TOKEN')}"
+}
+
+def classify_intent(text):
+    payload = {
+        "inputs": text,
+        "parameters": {
+            "candidate_labels": ["notes", "greeting", "bye", "help"]
+        }
+    }
+    try:
+        response = requests.post(HF_API_URL, headers=HF_HEADERS, json=payload)
+        response.raise_for_status()
+        result = response.json()
+        label = result['labels'][0]  # Top predicted label
+        return label
+    except Exception as e:
+        print("❌ NLP Error:", e)
+        return "unknown"
 
 @app.route("/", methods=["GET"])
 def home():
@@ -17,54 +41,42 @@ def home():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    incoming_msg = request.values.get('Body', '').strip()
+    incoming_msg = request.values.get('Body', '').strip().lower()
     from_number = request.values.get('From', '')
 
     resp = MessagingResponse()
     msg = resp.message()
 
-    # Step 1: Detect intent via Wit.ai
-    try:
-        wit_response = requests.get(
-            WIT_AI_URL + requests.utils.quote(incoming_msg),
-            headers={"Authorization": f"Bearer {WIT_AI_TOKEN}"}
-        )
-        wit_data = wit_response.json()
-        print("🧠 Wit.ai Response:", wit_data)
+    intent = classify_intent(incoming_msg)
+    print(f"🧠 Intent detected: {intent}")
 
-        intent = wit_data.get("intents", [{}])[0].get("name", "") if wit_data.get("intents") else ""
-        print(f"🔍 Detected Intent: {intent}")
-
-    except Exception as e:
-        print("⚠️ Wit.ai Error:", e)
-        msg.body("⚠️ I couldn't understand that. Please try again.")
-        return str(resp)
-
-    # Step 2: Intent-based AI response
-    if intent == "greetings":
-        msg.body("👋 Hello! I'm your AiNotes assistant.\nYou can ask for notes, textbooks or papers for FBISE, Punjab, Sindh, etc. 😊")
-        return str(resp)
-
-    elif intent in ["ask_notes", "ask_books", "study_help"]:
-        # Use Google search to find the best result from ainotes.pk
+    if intent == "notes":
         query = f"{incoming_msg} site:ainotes.pk"
-        print(f"🔍 Searching Google for: {query}")
-
         try:
             results = list(search(query, num_results=1))
             if results:
                 link = results[0]
-                msg.body(f"📚 Here's what I found for:\n*{incoming_msg}*\n👉 {link}")
+                msg.body(f"📘 Here's what I found for:\n*{incoming_msg}*\n🔗 {link}")
             else:
-                msg.body("❌ Sorry! I couldn't find what you need. Please visit https://ainotes.pk directly.")
+                msg.body("❌ Sorry! Couldn't find notes. Try visiting https://ainotes.pk.")
         except Exception as e:
-            print("Google Search Error:", e)
-            msg.body("⚠️ Something went wrong while searching. Please try again later.")
-        return str(resp)
+            print("❌ Google Search Error:", e)
+            msg.body("⚠️ Something went wrong. Please try again later.")
+
+    elif intent == "greeting":
+        msg.body("👋 Hello! I can help you find class notes from ainotes.pk. Just type something like:\n*9th class Physics notes*")
+
+    elif intent == "bye":
+        msg.body("👋 Goodbye! See you again soon.")
+
+    elif intent == "help":
+        msg.body("ℹ️ Send me a subject or class (e.g. '10th Chemistry notes') and I'll find it for you from ainotes.pk.")
 
     else:
-        msg.body("🤖 I'm still learning! Try asking for notes or say *hi* to start.")
-        return str(resp)
+        msg.body("🤖 Sorry, I didn’t understand that. Please send a class + subject name (e.g. 'Class 9 Biology').")
+
+    return str(resp)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # For development use only. Use gunicorn for production.
+    app.run(debug=True, host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
