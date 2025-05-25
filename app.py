@@ -14,29 +14,31 @@ HF_HEADERS = {
     "Authorization": f"Bearer {os.getenv('HF_API_TOKEN')}"
 }
 
-# ✅ Updated candidate labels
+# Updated and extended educational keywords
+CANDIDATE_LABELS = [
+    "textbook", "textbooks", "notes", "class notes", "chapter wise notes", "solved notes", 
+    "past papers", "guess papers", "helping notes", "MCQs", "short questions", "long questions", 
+    "solved exercises", "lab manual", "practical notebook", "biology practical", "chemistry practical",
+    "physics practical", "army test notes", "pma notes", "issb notes", "css notes", "pms notes",
+    "entry test notes", "mdcat notes", "ecat notes", "nums notes",
+    "9th class notes", "10th class notes", "1st year notes", "2nd year notes", "matric notes",
+    "intermediate notes", "FBISE notes", "Punjab board notes", "Sindh board notes", 
+    "KPK board notes", "Balochistan board notes", "AJK board notes",
+    "python roadmap", "java notes", "sql notes", "coding roadmap", 
+    "ai roadmap", "web development notes", "programming notes"
+]
+
 def classify_intent(text):
     payload = {
         "inputs": text,
         "parameters": {
-            "candidate_labels": [
-                "textbook", "textbooks", "notes", "class notes", "chapter wise notes", "solved notes",
-                "past papers", "guess papers", "helping notes", "MCQs", "short questions", "long questions",
-                "solved exercises", "lab manual", "practical notebook", "biology practical", "chemistry practical",
-                "physics practical", "army test notes", "pma notes", "issb notes", "css notes", "pms notes",
-                "entry test notes", "mdcat notes", "ecat notes", "nums notes",
-                "9th class notes", "10th class notes", "1st year notes", "2nd year notes", "matric notes",
-                "intermediate notes", "FBISE notes", "Punjab board notes", "Sindh board notes",
-                "KPK board notes", "Balochistan board notes", "AJK board notes",
-                "python roadmap", "java notes", "sql notes", "coding roadmap",
-                "ai roadmap", "web development notes"
-            ]
+            "candidate_labels": CANDIDATE_LABELS
         }
     }
     try:
         response = requests.post(HF_API_URL, headers=HF_HEADERS, json=payload)
         result = response.json()
-        label = result['labels'][0]
+        label = result['labels'][0] if 'labels' in result else "unknown"
         return label
     except Exception as e:
         print("NLP Error:", e)
@@ -55,28 +57,34 @@ def webhook():
     intent = classify_intent(incoming_msg)
     print(f"Detected intent: {intent}")
 
-    if intent == "notes":
-        query = f"{incoming_msg} site:ainotes.pk"
-    elif intent == "army test notes":
-        # Army specific notes search keywords
-        army_keywords = ["basai notes", "kpma notes", "pms notes", "army test notes", "pak army notes"]
-        matched = [k for k in army_keywords if k in incoming_msg]
-        if matched:
-            query = f"{matched[0]} site:ainotes.pk"
-        else:
-            query = f"army notes site:ainotes.pk"
-    elif intent == "greeting":
+    # Greeting intent
+    greeting_keywords = ["hello", "hi", "hey", "salam", "assalamualaikum"]
+    if any(word in incoming_msg for word in greeting_keywords) or intent in ["greeting"]:
         msg.body("👋 Hello! I can help you find class notes, Army test notes, and more from ainotes.pk. Try typing '10th Chemistry notes' or 'Basai notes'.")
         return str(resp)
-    elif intent == "bye":
+
+    # Farewell
+    if any(word in incoming_msg for word in ["bye", "goodbye", "khuda hafiz"]) or intent == "bye":
         msg.body("👋 Goodbye! See you again soon.")
         return str(resp)
-    elif intent == "help":
+
+    # Help intent
+    if "help" in incoming_msg or intent == "help":
         msg.body("ℹ️ Send me a subject or exam name like '9th Physics notes', 'Basai notes', or 'PMS notes', and I'll find them from ainotes.pk.")
         return str(resp)
+
+    # Army-related intent
+    if "army" in incoming_msg or "pma" in incoming_msg or intent in [
+        "army test notes", "pma notes", "issb notes", "css notes", "pms notes"
+    ]:
+        army_keywords = [
+            "basai notes", "pma notes", "issb notes", "css notes", "pms notes", "army test notes", "pak army notes"
+        ]
+        matched = [k for k in army_keywords if k in incoming_msg]
+        query = f"{matched[0]} site:ainotes.pk" if matched else "army notes site:ainotes.pk"
     else:
-        msg.body("🤖 Sorry, I didn’t understand that. Try sending something like 'Class 9 Biology' or 'Army test notes'.")
-        return str(resp)
+        # General note-related search
+        query = f"{incoming_msg} site:ainotes.pk"
 
     try:
         results = list(search(query, num_results=1))
