@@ -2,99 +2,74 @@ from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 from googlesearch import search
 import os
-from dotenv import load_dotenv
 import requests
+from dotenv import load_dotenv
 
 load_dotenv()
 
 app = Flask(__name__)
 
-HF_API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
-HF_HEADERS = {
-    "Authorization": f"Bearer {os.getenv('HF_API_TOKEN')}"
-}
-
-# Updated and extended educational keywords
-CANDIDATE_LABELS = [
-    "textbook", "textbooks", "notes", "class notes", "chapter wise notes", "solved notes", 
-    "past papers", "guess papers", "helping notes", "MCQs", "short questions", "long questions", 
-    "solved exercises", "lab manual", "practical notebook", "biology practical", "chemistry practical",
-    "physics practical", "army test notes", "pma notes", "issb notes", "css notes", "pms notes",
-    "entry test notes", "mdcat notes", "ecat notes", "nums notes",
-    "9th class notes", "10th class notes", "1st year notes", "2nd year notes", "matric notes",
-    "intermediate notes", "FBISE notes", "Punjab board notes", "Sindh board notes", 
-    "KPK board notes", "Balochistan board notes", "AJK board notes",
-    "python roadmap", "java notes", "sql notes", "coding roadmap", 
-    "ai roadmap", "web development notes", "programming notes"
-]
-
-def classify_intent(text):
-    payload = {
-        "inputs": text,
-        "parameters": {
-            "candidate_labels": CANDIDATE_LABELS
-        }
-    }
-    try:
-        response = requests.post(HF_API_URL, headers=HF_HEADERS, json=payload)
-        result = response.json()
-        label = result['labels'][0] if 'labels' in result else "unknown"
-        return label
-    except Exception as e:
-        print("NLP Error:", e)
-        return "unknown"
+DEEPSEEK_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+DEEPSEEK_API_KEY = "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"
 
 @app.route("/", methods=["GET"])
 def home():
-    return "WhatsApp Bot is Running!"
+    return "WhatsApp Bot with DeepSeek is Running!"
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    incoming_msg = request.values.get('Body', '').lower()
+    incoming_msg = request.values.get('Body', '').strip()
     resp = MessagingResponse()
     msg = resp.message()
 
-    intent = classify_intent(incoming_msg)
-    print(f"Detected intent: {intent}")
-
-    # Greeting intent
     greeting_keywords = ["hello", "hi", "hey", "salam", "assalamualaikum"]
-    if any(word in incoming_msg for word in greeting_keywords) or intent in ["greeting"]:
+    if any(word in incoming_msg.lower() for word in greeting_keywords):
         msg.body("👋 Hello! I can help you find class notes, Army test notes, and more from ainotes.pk. Try typing '10th Chemistry notes' or 'Basai notes'.")
         return str(resp)
 
-    # Farewell
-    if any(word in incoming_msg for word in ["bye", "goodbye", "khuda hafiz"]) or intent == "bye":
+    if any(word in incoming_msg.lower() for word in ["bye", "goodbye", "khuda hafiz"]):
         msg.body("👋 Goodbye! See you again soon.")
         return str(resp)
 
-    # Help intent
-    if "help" in incoming_msg or intent == "help":
+    if "help" in incoming_msg.lower():
         msg.body("ℹ️ Send me a subject or exam name like '9th Physics notes', 'Basai notes', or 'PMS notes', and I'll find them from ainotes.pk.")
         return str(resp)
 
-    # Army-related intent
-    if "army" in incoming_msg or "pma" in incoming_msg or intent in [
-        "army test notes", "pma notes", "issb notes", "css notes", "pms notes"
-    ]:
-        army_keywords = [
-            "basai notes", "pma notes", "issb notes", "css notes", "pms notes", "army test notes", "pak army notes"
-        ]
-        matched = [k for k in army_keywords if k in incoming_msg]
-        query = f"{matched[0]} site:ainotes.pk" if matched else "army notes site:ainotes.pk"
-    else:
-        # General note-related search
-        query = f"{incoming_msg} site:ainotes.pk"
+    query = f"{incoming_msg} site:ainotes.pk"
 
     try:
         results = list(search(query, num_results=1))
         if results:
             msg.body(f"📘 Here's what I found for:\n*{incoming_msg}*\n🔗 {results[0]}")
         else:
-            msg.body("❌ Sorry! Couldn't find related notes. Please try again or visit https://ainotes.pk directly.")
+            # Fallback to DeepSeek if Google search fails
+            deepseek_payload = {
+                "model": "deepseek/deepseek-r1-0528-qwen3-8b:free",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are an educational assistant that helps students find academic notes and answers from Ainotes.pk"
+                    },
+                    {
+                        "role": "user",
+                        "content": f"{incoming_msg}"
+                    }
+                ]
+            }
+            headers = {
+                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            r = requests.post(DEEPSEEK_API_URL, headers=headers, json=deepseek_payload)
+            if r.status_code == 200:
+                result = r.json()
+                reply = result['choices'][0]['message']['content']
+                msg.body(f"🤖 DeepSeek Reply:\n{reply}")
+            else:
+                msg.body("⚠️ No results found via Google or DeepSeek.")
     except Exception as e:
-        print("Google Search Error:", e)
-        msg.body("⚠️ Something went wrong with the search. Please try again later.")
+        print("Search/DeepSeek Error:", e)
+        msg.body("⚠️ Something went wrong. Please try again later.")
 
     return str(resp)
 
