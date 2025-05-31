@@ -3,19 +3,27 @@ import requests
 import os
 
 app = Flask(__name__)
+
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
-# ---------- Step 1: Identify Intent -------------
+# ✅ Root route to avoid "Not Found" error
+@app.route("/")
+def home():
+    return "🤖 Ainotes WhatsApp Bot is Live and Running!"
+
+# ✅ Intent Detection
 def detect_intent(message):
     message = message.lower()
-    if any(word in message for word in ["hello", "hi", "salam", "assalam", "kia hal", "how are you"]):
+    if any(greet in message for greet in ["hello", "hi", "salam", "assalamualaikum", "kia hall hai"]):
         return "greeting"
-    elif any(word in message for word in ["notes", "textbook", "guide", "past paper", "chapter", "book", "send"]):
+    elif any(q in message for q in ["result", "kab", "kb", "date", "announce", "hoga", "ayega", "aa rah", "rha", "raha"]):
+        return "question"
+    elif any(w in message for w in ["notes", "textbook", "guide", "past paper", "chapter", "mcqs", "long", "short"]):
         return "search"
     else:
-        return "question"
+        return "question"  # fallback to DeepSeek
 
-# ---------- Step 2: Use DeepSeek for smart answers -------------
+# ✅ DeepSeek for answering questions
 def ask_deepseek(query):
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -25,33 +33,34 @@ def ask_deepseek(query):
     payload = {
         "model": "deepseek-chat",
         "messages": [
-            {"role": "system", "content": "You're an assistant for Ainotes.pk. Answer clearly and helpfully in Urdu or English, based on the user's question."},
+            {"role": "system", "content": "You are an educational assistant for a Pakistani website Ainotes.pk. Give helpful, short, and accurate answers in Urdu if user asks in Urdu."},
             {"role": "user", "content": query}
         ]
     }
     response = requests.post(url, headers=headers, json=payload)
-    try:
-        return response.json()["choices"][0]["message"]["content"]
-    except Exception as e:
-        return "Maaf kijiye, koi issue aa gaya hai. Thodi dair baad koshish kijiye."
+    data = response.json()
+    return data["choices"][0]["message"]["content"]
 
-# ---------- Step 3: Real-time Search Ainotes.pk -------------
+# ✅ Real-time Ainotes Search (simple Google fallback)
 def search_ainotes(query):
-    formatted_query = query.replace(" ", "+")
-    return f"🔎 Yeh mila: https://ainotes.pk/?s={formatted_query}"
+    # 🔄 Customize this with your real search engine later
+    search_url = "https://www.google.com/search?q=site:ainotes.pk+" + query.replace(" ", "+")
+    return f"🔎 Ainotes.pk Search:\n{search_url}"
 
-# ---------- Step 4: Webhook for WhatsApp (Twilio) -------------
+# ✅ Webhook for Twilio
 @app.route("/webhook", methods=["POST"])
 def webhook():
     incoming_msg = request.values.get("Body", "").strip()
     intent = detect_intent(incoming_msg)
 
     if intent == "greeting":
-        reply = "👋 Walikum Salam! Main Ainotes.pk ka assistant hoon. Aap ko kis cheez ki madad chahiye? Example: 'Class 10 Chemistry notes' ya 'FBISE result kab aye ga?'"
+        reply = "👋 Walikum Salam! Main Ainotes.pk ka assistant hoon. Aap ko kis cheez ki madad chahiye?"
     elif intent == "search":
-        reply = search_ainotes(incoming_msg)
+        result = search_ainotes(incoming_msg)
+        reply = f"{result}"
     else:
-        reply = ask_deepseek(incoming_msg)
+        result = ask_deepseek(incoming_msg)
+        reply = f"📘 {result}"
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
