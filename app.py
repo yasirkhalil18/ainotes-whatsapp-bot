@@ -4,9 +4,15 @@ import os
 
 app = Flask(__name__)
 
+# Get DeepSeek API key from environment
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
-# Simple keyword-based routing
+# Route for checking server status in browser
+@app.route('/')
+def index():
+    return "✅ Flask bot server running! Visit /webhook for Twilio integration."
+
+# Intent detection based on keywords
 def detect_intent(message):
     message = message.lower()
     if any(greet in message for greet in ["hello", "hi", "salam", "assalamualaikum", "kia hall hai"]):
@@ -16,9 +22,9 @@ def detect_intent(message):
     elif any(w in message for w in ["notes", "textbook", "guide", "past paper", "chapter"]):
         return "search"
     else:
-        return "question"  # fallback to question/DeepSeek
+        return "question"  # fallback to DeepSeek
 
-# DeepSeek search for answers
+# Ask DeepSeek API for general questions
 def ask_deepseek(query):
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
@@ -35,13 +41,13 @@ def ask_deepseek(query):
     response = requests.post(url, headers=headers, json=payload)
     return response.json()["choices"][0]["message"]["content"]
 
-# Ainotes.pk search mock
+# Search Ainotes.pk mock (update with real search later)
 def search_ainotes(query):
-    # Replace with real Ainotes.pk search API later
     if "class 9" in query.lower():
         return "🔗 https://ainotes.pk/fbise-new-textbooks-for-class-9-2024-2025/"
     return "🔗 https://ainotes.pk/?s=" + query.replace(" ", "+")
 
+# Webhook route for Twilio
 @app.route("/webhook", methods=["POST"])
 def webhook():
     incoming_msg = request.values.get("Body", "").strip()
@@ -52,7 +58,7 @@ def webhook():
     elif intent == "search":
         result = search_ainotes(incoming_msg)
         reply = f"📘 Yeh mila:\n{result}"
-    else:  # DeepSeek answer
+    else:
         reply = ask_deepseek(incoming_msg)
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
