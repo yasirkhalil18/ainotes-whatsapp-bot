@@ -1,77 +1,62 @@
 from flask import Flask, request
-from twilio.twiml.messaging_response import MessagingResponse
-from googlesearch import search
-import os
 import requests
-from dotenv import load_dotenv
-
-load_dotenv()
+import os
 
 app = Flask(__name__)
 
-DEEPSEEK_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEEPSEEK_API_KEY = "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"
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
-@app.route("/", methods=["GET"])
-def home():
-    return "WhatsApp Bot with DeepSeek is Running!"
+# Simple keyword-based routing
+def detect_intent(message):
+    message = message.lower()
+    if any(greet in message for greet in ["hello", "hi", "salam", "assalamualaikum", "kia hall hai"]):
+        return "greeting"
+    elif any(q in message for q in ["result", "kab", "kb", "date", "announce"]):
+        return "question"
+    elif any(w in message for w in ["notes", "textbook", "guide", "past paper", "chapter"]):
+        return "search"
+    else:
+        return "question"  # fallback to question/DeepSeek
+
+# DeepSeek search for answers
+def ask_deepseek(query):
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": "You're an educational assistant for a Pakistani site Ainotes.pk. Give to-the-point, accurate, and helpful answers. Use Urdu if the question is in Urdu."},
+            {"role": "user", "content": query}
+        ]
+    }
+    response = requests.post(url, headers=headers, json=payload)
+    return response.json()["choices"][0]["message"]["content"]
+
+# Ainotes.pk search mock
+def search_ainotes(query):
+    # Replace with real Ainotes.pk search API later
+    if "class 9" in query.lower():
+        return "🔗 https://ainotes.pk/fbise-new-textbooks-for-class-9-2024-2025/"
+    return "🔗 https://ainotes.pk/?s=" + query.replace(" ", "+")
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    incoming_msg = request.values.get('Body', '').strip()
-    resp = MessagingResponse()
-    msg = resp.message()
+    incoming_msg = request.values.get("Body", "").strip()
+    intent = detect_intent(incoming_msg)
 
-    greeting_keywords = ["hello", "hi", "hey", "salam", "assalamualaikum"]
-    if any(word in incoming_msg.lower() for word in greeting_keywords):
-        msg.body("👋 Hello! I can help you find class notes, Army test notes, and more from ainotes.pk. Try typing '10th Chemistry notes' or 'Basai notes'.")
-        return str(resp)
+    if intent == "greeting":
+        reply = "👋 Walikum Salam! Main Ainotes.pk ka assistant hoon. Aap ko kis cheez ki madad chahiye?"
+    elif intent == "search":
+        result = search_ainotes(incoming_msg)
+        reply = f"📘 Yeh mila:\n{result}"
+    else:  # DeepSeek answer
+        reply = ask_deepseek(incoming_msg)
 
-    if any(word in incoming_msg.lower() for word in ["bye", "goodbye", "khuda hafiz"]):
-        msg.body("👋 Goodbye! See you again soon.")
-        return str(resp)
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+<Message>{reply}</Message>
+</Response>"""
 
-    if "help" in incoming_msg.lower():
-        msg.body("ℹ️ Send me a subject or exam name like '9th Physics notes', 'Basai notes', or 'PMS notes', and I'll find them from ainotes.pk.")
-        return str(resp)
-
-    query = f"{incoming_msg} site:ainotes.pk"
-
-    try:
-        results = list(search(query, num_results=1))
-        if results:
-            msg.body(f"📘 Here's what I found for:\n*{incoming_msg}*\n🔗 {results[0]}")
-        else:
-            # Fallback to DeepSeek if Google search fails
-            deepseek_payload = {
-                "model": "deepseek/deepseek-r1-0528-qwen3-8b:free",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are an educational assistant that helps students find academic notes and answers from Ainotes.pk"
-                    },
-                    {
-                        "role": "user",
-                        "content": f"{incoming_msg}"
-                    }
-                ]
-            }
-            headers = {
-                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            r = requests.post(DEEPSEEK_API_URL, headers=headers, json=deepseek_payload)
-            if r.status_code == 200:
-                result = r.json()
-                reply = result['choices'][0]['message']['content']
-                msg.body(f"🤖 DeepSeek Reply:\n{reply}")
-            else:
-                msg.body("⚠️ No results found via Google or DeepSeek.")
-    except Exception as e:
-        print("Search/DeepSeek Error:", e)
-        msg.body("⚠️ Something went wrong. Please try again later.")
-
-    return str(resp)
-
-if __name__ == "__main__":
-    app.run(debug=True)
