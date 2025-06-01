@@ -4,24 +4,20 @@ import os
 
 app = Flask(__name__)
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+DEEPSEEK_API_KEY = "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"
 
-@app.route("/")
-def home():
-    return "✅ Ainotes WhatsApp Bot is Live!"
+# ✅ 18+ abusive filter
+abusive_words = ["gandu", "bhosdi", "madarchod", "chutiya", "lund", "bhenchod", "randi", "fuck", "sex"]
 
-# Detect whether to search Ainotes or ask DeepSeek
-def detect_intent(message):
-    msg = message.lower()
-    if "notes" in msg or "textbook" in msg or "past paper" in msg:
-        return "search"
-    return "question"
+# ✅ Detect if message is study-related
+def detect_intent(msg):
+    msg = msg.lower()
+    if any(word in msg for word in ["notes", "textbook", "book", "past paper", "paper", "guide", "guess"]):
+        return "study"
+    return "general"
 
-# Ask DeepSeek with error handling
+# ✅ DeepSeek AI response
 def ask_deepseek(query):
-    if not DEEPSEEK_API_KEY:
-        return "❌ DeepSeek API key missing. Admin ko inform karein."
-
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -33,43 +29,50 @@ def ask_deepseek(query):
             {
                 "role": "system",
                 "content": (
-                    "You are an expert assistant for Ainotes.pk. Answer in simple Urdu, be very short, direct, and helpful. "
-                    "If it's a study-related question, answer to the point. If it’s a request for notes, refer to Ainotes.pk."
+                    "Tum Ainotes.pk ke assistant ho. Har jawab choti Urdu mein do. Agar koi study-related info AI se mil jaye to do, "
+                    "warna end mein bolo 'Mazid maloomat ke liye Ainotes.pk par jayein'."
                 )
             },
             {"role": "user", "content": query}
         ]
     }
+    res = requests.post(url, headers=headers, json=payload)
+    data = res.json()
+    return data["choices"][0]["message"]["content"]
 
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
-    except Exception as e:
-        print("❌ DeepSeek error:", e)
-        return "⚠️ Maaf kijiye, abhi jawab dene mein masla ho raha hai."
-
-# Google-based Ainotes.pk search
+# ✅ Google site search on Ainotes.pk
 def search_ainotes(query):
-    base_url = "https://www.google.com/search?q=site:ainotes.pk+"
-    full_url = base_url + "+".join(query.strip().split())
-    return f"📘 Ainotes.pk پر تلاش کریں:\n{full_url}"
+    search_url = "https://www.google.com/search?q=site:ainotes.pk+" + "+".join(query.strip().split())
+    return search_url
 
-# WhatsApp Twilio webhook
+# ✅ Check if abusive message
+def is_abusive(msg):
+    msg = msg.lower()
+    return any(word in msg for word in abusive_words)
+
+# ✅ Twilio webhook
 @app.route("/webhook", methods=["POST"])
-def webhook():
+def whatsapp_webhook():
     incoming_msg = request.values.get("Body", "").strip()
-    print("📩 User:", incoming_msg)
 
-    intent = detect_intent(incoming_msg)
-
-    if intent == "search":
-        reply = search_ainotes(incoming_msg)
+    if is_abusive(incoming_msg):
+        reply = "⛔ Ghalat alfaaz ka istemal na karein."
     else:
-        reply = ask_deepseek(incoming_msg)
+        intent = detect_intent(incoming_msg)
+
+        if intent == "study":
+            link = search_ainotes(incoming_msg)
+            # Simulate search check: You can later improve by scraping (optional)
+            reply = f"📘 Yeh notes shayad yahan mil jayein:\n{link}\n\nAgar yahan na milen to admin se request karne ke liye Ainotes.pk par jayein."
+        else:
+            response = ask_deepseek(incoming_msg)
+            reply = f"{response}\n\nMazid maloomat ke liye Ainotes.pk par jayein."
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
 <Message>{reply}</Message>
 </Response>"""
+
+@app.route("/")
+def home():
+    return "✅ Ainotes WhatsApp Bot is Live!"
