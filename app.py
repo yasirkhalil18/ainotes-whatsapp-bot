@@ -1,78 +1,85 @@
 from flask import Flask, request
 import requests
-import os
+import re
 
 app = Flask(__name__)
 
-DEEPSEEK_API_KEY = "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"
+# ✅ Your working DeepSeek API Key
+API_KEY = "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"
 
-# ✅ 18+ abusive filter
-abusive_words = ["gandu", "bhosdi", "madarchod", "chutiya", "lund", "bhenchod", "randi", "fuck", "sex"]
+# ✅ Abuse Filter (block 18+ messages)
+def is_abusive(text):
+    abuse_keywords = ['gandu', 'bhosdi', 'chutiya', 'madarchod', 'lund', 'sex']
+    return any(bad in text.lower() for bad in abuse_keywords)
 
-# ✅ Detect if message is study-related
-def detect_intent(msg):
-    msg = msg.lower()
-    if any(word in msg for word in ["notes", "textbook", "book", "past paper", "paper", "guide", "guess"]):
-        return "study"
-    return "general"
+# ✅ Check if query is about notes/textbooks/etc
+def is_study_related(text):
+    keywords = ['notes', 'textbook', 'past paper', 'class', 'guess', 'short', 'long question']
+    return any(k in text.lower() for k in keywords)
 
-# ✅ DeepSeek AI response
+# ✅ Real-time Google Search for Ainotes.pk
+def search_ainotes(query):
+    base = "https://www.google.com/search?q=site:ainotes.pk+"
+    search_url = base + "+".join(query.split())
+    return f"📘 Aap yahan check kar sakte hain:\n{search_url}"
+
+# ✅ DeepSeek smart Urdu response
 def ask_deepseek(query):
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
-    payload = {
-        "model": "deepseek-chat",
+    data = {
+        "model": "deepseek/deepseek-r1-0528-qwen3-8b:free",
         "messages": [
             {
                 "role": "system",
                 "content": (
-                    "Tum Ainotes.pk ke assistant ho. Har jawab choti Urdu mein do. Agar koi study-related info AI se mil jaye to do, "
-                    "warna end mein bolo 'Mazid maloomat ke liye Ainotes.pk par jayein'."
+                    "Aap ek Urdu AI assistant hain Ainotes.pk ke liye. Sawal ka chhota, simple, aur Urdu mein jawab dein. "
+                    "Agar study ya education ka sawal ho to seedha jawab dein. Agar notes chahiyein to search na karen, "
+                    "balki Ainotes.pk ka link dein."
                 )
             },
             {"role": "user", "content": query}
         ]
     }
-    res = requests.post(url, headers=headers, json=payload)
-    data = res.json()
-    return data["choices"][0]["message"]["content"]
-
-# ✅ Google site search on Ainotes.pk
-def search_ainotes(query):
-    search_url = "https://www.google.com/search?q=site:ainotes.pk+" + "+".join(query.strip().split())
-    return search_url
-
-# ✅ Check if abusive message
-def is_abusive(msg):
-    msg = msg.lower()
-    return any(word in msg for word in abusive_words)
-
-# ✅ Twilio webhook
-@app.route("/webhook", methods=["POST"])
-def whatsapp_webhook():
-    incoming_msg = request.values.get("Body", "").strip()
-
-    if is_abusive(incoming_msg):
-        reply = "⛔ Ghalat alfaaz ka istemal na karein."
+    res = requests.post(url, headers=headers, json=data)
+    if res.status_code == 200:
+        return res.json()['choices'][0]['message']['content'].strip()
     else:
-        intent = detect_intent(incoming_msg)
+        return "❌ AI se jawab nahi mila. Mazeed info ke liye Ainotes.pk par jayein."
 
-        if intent == "study":
-            link = search_ainotes(incoming_msg)
-            # Simulate search check: You can later improve by scraping (optional)
-            reply = f"📘 Yeh notes shayad yahan mil jayein:\n{link}\n\nAgar yahan na milen to admin se request karne ke liye Ainotes.pk par jayein."
-        else:
-            response = ask_deepseek(incoming_msg)
-            reply = f"{response}\n\nMazid maloomat ke liye Ainotes.pk par jayein."
-
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-<Message>{reply}</Message>
-</Response>"""
-
+# ✅ Home route
 @app.route("/")
 def home():
     return "✅ Ainotes WhatsApp Bot is Live!"
+
+# ✅ Webhook for Twilio WhatsApp
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    incoming_msg = request.values.get("Body", "").strip()
+
+    # ❌ Abuse filter
+    if is_abusive(incoming_msg):
+        return respond("⚠️ Aapka paighaam naamunasib tha. Barah-e-karam tameez se baat karein.")
+
+    # 📘 Study notes/textbook/paper request
+    if is_study_related(incoming_msg):
+        link = search_ainotes(incoming_msg)
+        return respond(f"{link}\n\nAgar yeh notes available nahi, to aap request bhej sakte hain admin ko.\n🔗 https://ainotes.pk")
+
+    # 💬 General question → AI response
+    answer = ask_deepseek(incoming_msg)
+    return respond(f"{answer}\n\n🔎 Mazeed info: https://ainotes.pk")
+
+# ✅ Twilio-compatible XML response
+def respond(text):
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+<Message>{text}</Message>
+</Response>"""
+
+# ✅ Run server (comment this if using Render)
+# if __name__ == "__main__":
+#     app.run(debug=True)
